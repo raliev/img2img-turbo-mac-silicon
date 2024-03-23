@@ -27,7 +27,7 @@ if __name__ == "__main__":
     input_image = Image.open(args.input_image).convert('RGB')
     # translate the image
     with torch.no_grad():
-        x_t = T_val(input_image).unsqueeze(0).cuda()
+        x_t = T_val(input_image).unsqueeze(0).cpu()
         output = model(x_t, direction="a2b")
 
     output_pil = transforms.ToPILImage()(output[0].cpu() * 0.5 + 0.5)

@@ -50,7 +50,7 @@ class CycleGAN_Turbo(torch.nn.Module):
     def __init__(self, name, ckpt_folder="checkpoints"):
         super().__init__()
         self.tokenizer = AutoTokenizer.from_pretrained("stabilityai/sd-turbo", subfolder="tokenizer")
-        self.text_encoder = CLIPTextModel.from_pretrained("stabilityai/sd-turbo", subfolder="text_encoder").cuda()
+        self.text_encoder = CLIPTextModel.from_pretrained("stabilityai/sd-turbo", subfolder="text_encoder").to("mps")
         self.sched = make_1step_sched()
         vae = AutoencoderKL.from_pretrained("stabilityai/sd-turbo", subfolder="vae")
         unet = UNet2DConditionModel.from_pretrained("stabilityai/sd-turbo", subfolder="unet")
@@ -75,7 +75,8 @@ class CycleGAN_Turbo(torch.nn.Module):
                     print("ERROR, something went wrong")
                 print(f"Downloaded successfully to {outf}")
 
-            sd = torch.load(outf)
+            #sd = torch.load(outf)
+            sd = torch.load(outf, map_location="mps")
             lora_conf_encoder = LoraConfig(r=sd["rank_unet"], init_lora_weights="gaussian", target_modules=sd["l_target_modules_encoder"], lora_alpha=sd["rank_unet"])
             lora_conf_decoder = LoraConfig(r=sd["rank_unet"], init_lora_weights="gaussian", target_modules=sd["l_target_modules_decoder"], lora_alpha=sd["rank_unet"])
             lora_conf_others = LoraConfig(r=sd["rank_unet"], init_lora_weights="gaussian", target_modules=sd["l_modules_others"], lora_alpha=sd["rank_unet"])
@@ -98,10 +99,10 @@ class CycleGAN_Turbo(torch.nn.Module):
 
             vae.encoder.forward = my_vae_encoder_fwd.__get__(vae.encoder, vae.encoder.__class__)
             vae.decoder.forward = my_vae_decoder_fwd.__get__(vae.decoder, vae.decoder.__class__)
-            vae.decoder.skip_conv_1 = torch.nn.Conv2d(512, 512, kernel_size=(1, 1), stride=(1, 1), bias=False).cuda()
-            vae.decoder.skip_conv_2 = torch.nn.Conv2d(256, 512, kernel_size=(1, 1), stride=(1, 1), bias=False).cuda()
-            vae.decoder.skip_conv_3 = torch.nn.Conv2d(128, 512, kernel_size=(1, 1), stride=(1, 1), bias=False).cuda()
-            vae.decoder.skip_conv_4 = torch.nn.Conv2d(128, 256, kernel_size=(1, 1), stride=(1, 1), bias=False).cuda()
+            vae.decoder.skip_conv_1 = torch.nn.Conv2d(512, 512, kernel_size=(1, 1), stride=(1, 1), bias=False).to("mps")
+            vae.decoder.skip_conv_2 = torch.nn.Conv2d(256, 512, kernel_size=(1, 1), stride=(1, 1), bias=False).to("mps")
+            vae.decoder.skip_conv_3 = torch.nn.Conv2d(128, 512, kernel_size=(1, 1), stride=(1, 1), bias=False).to("mps")
+            vae.decoder.skip_conv_4 = torch.nn.Conv2d(128, 256, kernel_size=(1, 1), stride=(1, 1), bias=False).to("mps")
             vae.decoder.ignore_skip = False
             vae_lora_config = LoraConfig(r=4, init_lora_weights="gaussian", target_modules=sd["vae_lora_target_modules"])
             vae.add_adapter(vae_lora_config, adapter_name="vae_skip")
@@ -111,18 +112,18 @@ class CycleGAN_Turbo(torch.nn.Module):
             vae_enc.load_state_dict(sd["sd_vae_enc"])
             vae_dec = VAE_decode(vae, vae_b2a=vae_b2a)
             vae_dec.load_state_dict(sd["sd_vae_dec"])
-            self.timesteps = torch.tensor([999], device="cuda").long()
+            self.timesteps = torch.tensor([999], device="mps").long()
             self.caption = "driving in the night"
-        vae_enc.cuda()
-        vae_dec.cuda()
-        unet.cuda()
-        unet.enable_xformers_memory_efficient_attention()
+        vae_enc.to("mps")
+        vae_dec.to("mps")
+        unet.to("mps")
+        #unet.enable_xformers_memory_efficient_attention()
         self.unet, self.vae_enc, self.vae_dec = unet, vae_enc, vae_dec
 
     def forward(self, x_t, direction):
         assert direction in ["a2b", "b2a"]
         caption_tokens = self.tokenizer(self.caption, max_length=self.tokenizer.model_max_length,
-                padding="max_length", truncation=True, return_tensors="pt").input_ids.cuda()
+                padding="max_length", truncation=True, return_tensors="pt").input_ids.to("mps")
         caption_enc = self.text_encoder(caption_tokens)[0]
         x_t_enc = self.vae_enc(x_t, direction=direction)
         model_pred = self.unet(x_t_enc, self.timesteps, encoder_hidden_states=caption_enc,).sample

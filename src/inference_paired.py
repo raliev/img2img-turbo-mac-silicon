@@ -32,18 +32,18 @@ if __name__ == "__main__":
     with torch.no_grad():
         if args.model_name == 'edge_to_image':
             canny = canny_from_pil(input_image, args.low_threshold, args.high_threshold)
-            c_t = transforms.ToTensor()(canny).unsqueeze(0).cuda()
+            c_t = transforms.ToTensor()(canny).unsqueeze(0).to("mps")
             output_image = model(c_t, args.prompt)
 
         if args.model_name == 'sketch_to_image_stochastic':
             image_t = F.to_tensor(input_image) < 0.5
-            c_t = image_t.unsqueeze(0).cuda().float()
+            c_t = image_t.unsqueeze(0).to("mps").float()
             torch.manual_seed(args.seed)
             B, C, H, W = c_t.shape
             noise = torch.randn((1, 4, H // 8, W // 8), device=c_t.device)
             output_image = model(c_t, args.prompt, deterministic=False, r=args.gamma, noise_map=noise)
 
-        output_pil = transforms.ToPILImage()(output_image[0].cpu() * 0.5 + 0.5)
+        output_pil = transforms.ToPILImage()(output_image[0].to("mps") * 0.5 + 0.5)
 
     # save the output image
     bname = os.path.basename(args.input_image)
